@@ -28,7 +28,7 @@
   "Format buffers visually without modification."
   :group 'faces)
 
-(defcustom vf-function #'apheleia-format-buffer
+(defcustom vf-buffer-formatter-function #'apheleia-format-buffer
   "The command/function backend used to format the buffer.
 
 Depending of the package you are using for formatting, this can be set
@@ -128,7 +128,7 @@ incomplete formatting."
      (delay-mode-hooks (funcall mode))
      (delete-region (point-min) (point-max))
      (insert content)
-     (call-interactively vf-function)
+     (call-interactively vf-buffer-formatter-function)
      (sit-for 1)) ; TODO: get rid of this dirty hack by finding a proper way to trigger an AST update!
     (with-silent-modifications
       (vf--depth-first-walk))))
