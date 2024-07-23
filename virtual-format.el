@@ -28,12 +28,10 @@
   "Format buffers visually without modification."
   :group 'faces)
 
-(defcustom vf-buffer-formatter-function #'apheleia-format-buffer
-  "The command/function backend used to format the buffer.
-
-Depending of the package you are using for formatting, this can be set
-to: `clang-format-buffer', `rustic-format-buffer',
-`apheleia-format-buffer', `format-all-buffer'."
+(defcustom vf-buffer-formatter-function
+  (or (cl-find-if #'fboundp '(apheleia-format-buffer format-all-buffer))
+      (lambda () (user-error "Please customize `virtual-format-buffer-formatter-function'")))
+  "The command/function backend used to format the buffer."
   :group 'virtual-format
   :type 'function)
 
@@ -123,7 +121,9 @@ incomplete formatting."
      (delay-mode-hooks (funcall mode))
      (delete-region (point-min) (point-max))
      (insert content)
-     (call-interactively vf-buffer-formatter-function)
+     (if (commandp vf-buffer-formatter-function)
+         (call-interactively vf-buffer-formatter-function)
+       (funcall vf-buffer-formatter-function))
      (sit-for 1)) ; TODO: get rid of this dirty hack by finding a proper way to trigger an AST update!
     (with-silent-modifications
       (vf--depth-first-walk))))
