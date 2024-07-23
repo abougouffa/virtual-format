@@ -29,23 +29,29 @@
   :group 'faces)
 
 (defcustom vf-function #'apheleia-format-buffer
-  "The command/function backend used to format the buffer."
+  "The command/function backend used to format the buffer.
+
+Depending of the package you are using for formatting, this can be set
+to: `clang-format-buffer', `rustic-format-buffer',
+`apheleia-format-buffer', `format-all-buffer'."
   :group 'visual-format
   :type 'function)
 
 
+;;; Internals
+
 (defvar-local vf--buffer nil)
-(defvar-local vf--buffer-formatted nil)
+(defvar-local vf--buffer-fmt nil)
 (defvar-local vf--buffer-text-props nil)
 
 (defmacro vf--with-buff (&rest body)
-  "Run BODY in the original buffer."
+  "Run BODY in the target buffer."
   `(with-current-buffer vf--buffer
     ,@body))
 
 (defmacro vf--with-buff-fmt (&rest body)
   "Run BODY in the formatted buffer."
-  `(with-current-buffer vf--buffer-formatted
+  `(with-current-buffer vf--buffer-fmt
     ,@body))
 
 (defun vf--depth-first-walk (&optional node node-fmt prev-node prev-node-fmt)
@@ -81,16 +87,19 @@
                   prev-leaf-fmt (cdr last-nodes))))))
     (cons prev-leaf prev-leaf-fmt)))
 
+
+;;; Commands
+
 (defun vf-cleanup ()
   "Cleanup the visual formatting."
   (interactive)
-  (dolist (spec vf--buffer-text-props)
-    (let ((pos-beg (nth 0 spec))
-          (pos-end (nth 1 spec))
-          (prop (nth 2 spec)))
-      (remove-text-properties
-       pos-beg (or (text-property-not-all start end 'display prop) pos-end)
-       '(display nil)))))
+  (with-silent-modifications
+    (let ((props vf--buffer-text-props))
+      (setq vf--buffer-text-props nil)
+      (dolist (spec props)
+        (let ((pos-beg (nth 0 spec))
+              (pos-end (nth 1 spec)))
+          (remove-text-properties pos-beg pos-end '(display nil)))))))
 
 ;;;###autoload
 (defun visual-format-buffer ()
@@ -98,27 +107,24 @@
   (interactive)
   (vf-cleanup)
   (let ((vf--buffer (current-buffer))
-        (vf--buffer-formatted (get-buffer-create (format " *visual-format: %s*" (buffer-name))))
+        (vf--buffer-fmt (get-buffer-create (format " *visual-format: %s*" (buffer-name))))
         (content (buffer-string))
-        (mode major-mode)
-        (lang (treesit-language-at (point-min))))
+        (mode major-mode))
     (vf--with-buff-fmt
      (delay-mode-hooks (funcall mode))
      (delete-region (point-min) (point-max))
      (insert content)
      (call-interactively vf-function)
-     (treesit-parser-create lang))
+     (sit-for 1)) ; TODO: get rid of this dirty hack by finding a proper way to trigger an AST update!
     (with-silent-modifications
       (vf--depth-first-walk))))
 
 ;;;###autoload
 (define-minor-mode visual-format-mode
-  "Format code without modifying the buffer."
+  "Visually format the buffer without modification."
   :lighter " VFmt"
   :global nil
-  (if vf-mode
-      (vf-buffer)
-    (vf-cleanup)))
+  (if vf-mode (vf-buffer) (vf-cleanup)))
 
 
 (provide 'visual-format)
