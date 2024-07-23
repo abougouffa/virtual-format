@@ -52,24 +52,19 @@ incomplete formatting."
 
 ;;; Internals
 
-(defvar-local vf--buffer nil)
-(defvar-local vf--buffer-fmt nil)
 (defvar-local vf--buffer-text-props nil)
 
-(defmacro vf--with-buff (&rest body)
-  "Run BODY in the target buffer."
-  `(with-current-buffer vf--buffer
-    ,@body))
-
-(defmacro vf--with-buff-fmt (&rest body)
+(defmacro vf--with-fmt-buf (&rest body)
   "Run BODY in the formatted buffer."
-  `(with-current-buffer vf--buffer-fmt
-    ,@body))
+  `(let ((dir default-directory))
+    (with-current-buffer (get-buffer-create (format " *virtual-format: %s*" (buffer-name)))
+     (setq-local default-directory dir)
+     ,@body)))
 
 (defun vf--depth-first-walk (&optional node node-fmt prev-node prev-node-fmt)
   "Recursively walk NODE and NODE-FMT, with PREV-NODE and PREV-NODE-FMT."
-  (let ((node (or node (vf--with-buff (treesit-buffer-root-node))))
-        (node-fmt (or node-fmt (vf--with-buff-fmt (treesit-buffer-root-node))))
+  (let ((node (or node (treesit-buffer-root-node)))
+        (node-fmt (or node-fmt (vf--with-fmt-buf (treesit-buffer-root-node))))
         (prev-leaf prev-node)
         (prev-leaf-fmt prev-node-fmt))
     (when (/= (treesit-node-child-count node) (treesit-node-child-count node-fmt))
@@ -80,20 +75,18 @@ incomplete formatting."
              (n-fmt (treesit-node-child node-fmt i)))
         (if (zerop (treesit-node-child-count n)) ; leaf
             (let* ((pos-beg
-                    (vf--with-buff
-                     (or (and prev-leaf (max 1 (1- (treesit-node-end prev-leaf))))
-                         (point-min))))
+                    (or (and prev-leaf (max 1 (1- (treesit-node-end prev-leaf))))
+                        (point-min)))
                    (pos-end (treesit-node-start n))
                    (pos-beg-fmt
-                    (vf--with-buff-fmt
+                    (vf--with-fmt-buf
                      (or (and prev-leaf-fmt (max 1 (1- (treesit-node-end prev-leaf-fmt))))
                          (point-min))))
                    (pos-end-fmt (treesit-node-start n-fmt))
-                   (fmt-spaces (vf--with-buff-fmt (buffer-substring pos-beg-fmt pos-end-fmt))))
-              (vf--with-buff
-               (unless (string= (buffer-substring pos-beg pos-end) fmt-spaces)
-                 (push (list pos-beg pos-end fmt-spaces) vf--buffer-text-props)
-                 (put-text-property pos-beg pos-end 'display fmt-spaces)))
+                   (fmt-spaces (vf--with-fmt-buf (buffer-substring pos-beg-fmt pos-end-fmt))))
+              (unless (string= (buffer-substring pos-beg pos-end) fmt-spaces)
+                (push (list pos-beg pos-end fmt-spaces) vf--buffer-text-props)
+                (put-text-property pos-beg pos-end 'display fmt-spaces))
               (setq prev-leaf n
                     prev-leaf-fmt n-fmt))
           (let ((last-nodes (vf--depth-first-walk n n-fmt prev-leaf prev-leaf-fmt)))
@@ -120,11 +113,13 @@ incomplete formatting."
   "Visually format the buffer without modifing it."
   (interactive)
   (vf-cleanup)
-  (let ((vf--buffer (current-buffer))
-        (vf--buffer-fmt (get-buffer-create (format " *virtual-format: %s*" (buffer-name))))
-        (content (buffer-string))
-        (mode major-mode))
-    (vf--with-buff-fmt
+  (let ((content (buffer-string))
+        (mode major-mode)
+        (buf-tab-width tab-width)
+        (buf-standard-indent standard-indent))
+    (vf--with-fmt-buf
+     (setq-local tab-width buf-tab-width
+                 standard-indent buf-standard-indent)
      (delay-mode-hooks (funcall mode))
      (delete-region (point-min) (point-max))
      (insert content)
