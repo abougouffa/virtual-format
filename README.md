@@ -1,4 +1,4 @@
-Visual Format
+Virtual Format
 ==
 
 This package provide a simple mode to visually format buffers without modifying
@@ -25,18 +25,18 @@ does this.
 
 The idea behind this package is quite simple, for a messy buffer, it creates a
 temporary buffer with the same content and formats it with the function of your
-choice (customize it via `visual-format-buffer-formatter-function`). Then,
+choice (customize it via `virtual-format-buffer-formatter-function`). Then,
 transposes the spaces from the formatted buffer to the original buffers via
 Emacs' _text properties_.
 
-In order to know where to look, `visual-format` uses Tree Sitter (via Emacs 29+
+In order to know where to look, `virtual-format` uses Tree Sitter (via Emacs 29+
 `treesit`), it walks the AST for the original buffer and the formatted buffer
 set the spaces in the original buffer according to these observed in the
 formatted buffer.
 
 #### Assumptions
 
-In order to work, `visual-format` make the following assumption:
+In order to work, `virtual-format` make the following assumption:
 
 > [!CAUTION]
 > The formatted buffer **should** have the same AST as the original buffer

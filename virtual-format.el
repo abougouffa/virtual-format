@@ -1,4 +1,4 @@
-;;; visual-format.el --- Format buffer without modifing it -*- lexical-binding: t; -*-
+;;; virtual-format.el --- Virtually format buffer without modifing it -*- lexical-binding: t; -*-
 ;;
 ;; Copyright (C) 2024 Abdelhak Bougouffa
 ;;
@@ -8,7 +8,7 @@
 ;; Modified: July 23, 2024
 ;; Version: 0.0.1
 ;; Keywords: convenience faces languages text
-;; Homepage: https://github.com/abougouffa/visual-format
+;; Homepage: https://github.com/abougouffa/virtual-format
 ;; Package-Requires: ((emacs "28.1"))
 ;; SPDX-License-Identifier: GPL-3.0
 ;;
@@ -24,7 +24,7 @@
 
 (declare-function #'apheleia-format-buffer "apheleia")
 
-(defgroup visual-format nil
+(defgroup virtual-format nil
   "Format buffers visually without modification."
   :group 'faces)
 
@@ -34,7 +34,7 @@
 Depending of the package you are using for formatting, this can be set
 to: `clang-format-buffer', `rustic-format-buffer',
 `apheleia-format-buffer', `format-all-buffer'."
-  :group 'visual-format
+  :group 'virtual-format
   :type 'function)
 
 (defcustom vf-keep-incomplete-formatting nil
@@ -43,10 +43,10 @@ to: `clang-format-buffer', `rustic-format-buffer',
 An incomplete formatting can happen with some formatters that modify the
 AST by adding instructions.
 
-When set to non-nil, `visual-format' will keep the formatted parts of
-the buffer after failing, otherwise, `visual-format' cleanup the
+When set to non-nil, `virtual-format' will keep the formatted parts of
+the buffer after failing, otherwise, `virtual-format' cleanup the
 incomplete formatting."
-  :group 'visual-format
+  :group 'virtual-format
   :type 'boolean)
 
 
@@ -116,12 +116,12 @@ incomplete formatting."
           (remove-text-properties pos-beg pos-end '(display nil)))))))
 
 ;;;###autoload
-(defun visual-format-buffer ()
+(defun virtual-format-buffer ()
   "Visually format the buffer without modifing it."
   (interactive)
   (vf-cleanup)
   (let ((vf--buffer (current-buffer))
-        (vf--buffer-fmt (get-buffer-create (format " *visual-format: %s*" (buffer-name))))
+        (vf--buffer-fmt (get-buffer-create (format " *virtual-format: %s*" (buffer-name))))
         (content (buffer-string))
         (mode major-mode))
     (vf--with-buff-fmt
@@ -134,16 +134,16 @@ incomplete formatting."
       (vf--depth-first-walk))))
 
 ;;;###autoload
-(define-minor-mode visual-format-mode
+(define-minor-mode virtual-format-mode
   "Visually format the buffer without modification."
   :lighter " VFmt"
   :global nil
   (if vf-mode (vf-buffer) (vf-cleanup)))
 
 
-(provide 'visual-format)
-;;; visual-format.el ends here
+(provide 'virtual-format)
+;;; virtual-format.el ends here
 
 ;; Local Variables:
-;; read-symbol-shorthands: (("vf-" . "visual-format-"))
+;; read-symbol-shorthands: (("vf-" . "virtual-format-"))
 ;; End:
