@@ -37,6 +37,18 @@ to: `clang-format-buffer', `rustic-format-buffer',
   :group 'visual-format
   :type 'function)
 
+(defcustom vf-keep-incomplete-formatting nil
+  "Should we allow incomplete formatting?
+
+An incomplete formatting can happen with some formatters that modify the
+AST by adding instructions.
+
+When set to non-nil, `visual-format' will keep the formatted parts of
+the buffer after failing, otherwise, `visual-format' cleanup the
+incomplete formatting."
+  :group 'visual-format
+  :type 'boolean)
+
 
 ;;; Internals
 
@@ -60,7 +72,9 @@ to: `clang-format-buffer', `rustic-format-buffer',
         (node-fmt (or node-fmt (vf--with-buff-fmt (treesit-buffer-root-node))))
         (prev-leaf prev-node)
         (prev-leaf-fmt prev-node-fmt))
-    (cl-assert (= (treesit-node-child-count node) (treesit-node-child-count node-fmt)))
+    (when (/= (treesit-node-child-count node) (treesit-node-child-count node-fmt))
+      (unless vf-keep-incomplete-formatting (vf-cleanup))
+      (user-error "Incomplete formatting"))
     (dotimes (i (treesit-node-child-count node))
       (let* ((n (treesit-node-child node i))
              (n-fmt (treesit-node-child node-fmt i)))
