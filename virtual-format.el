@@ -22,7 +22,6 @@
 
 (require 'treesit)
 
-(declare-function #'apheleia-format-buffer "apheleia")
 
 (defgroup virtual-format nil
   "Format buffers visually without modification."
@@ -54,6 +53,8 @@ incomplete formatting."
 
 
 ;;; Internals
+
+(defvar vf-signal-error-on-incomplete-formatting t)
 
 (defmacro vf--with-fmt-buf (&rest body)
   "Run BODY in the formatted buffer."
@@ -101,7 +102,7 @@ incomplete formatting."
   (let ((prev-leaf prev-node)
         (prev-leaf-fmt prev-node-fmt))
     (when (/= (treesit-node-child-count node) (treesit-node-child-count node-fmt))
-      (unless vf-keep-incomplete-formatting (vf-cleanup (point-min) (point-max)))
+      (unless vf-keep-incomplete-formatting (vf-cleanup (treesit-node-start node) (treesit-node-end node)))
       (let* ((pos (treesit-node-start node))
              (line (line-number-at-pos pos))
              (col (save-excursion (goto-char pos) (- pos (pos-bol)))))
@@ -131,6 +132,14 @@ incomplete formatting."
                   prev-leaf-fmt (cdr last-nodes))))))
     (cons prev-leaf prev-leaf-fmt)))
 
+(defun vf--incremental-walk (&optional node)
+  "Recursively walk NODE."
+  (let ((vf-jump-on-incomplete-formatting nil)
+        (vf-keep-incomplete-formatting t))
+    (condition-case nil
+        (vf-region (treesit-node-start node) (treesit-node-end node))
+      (user-error (mapc #'vf--incremental-walk (treesit-node-children node))))))
+
 ;;; Commands
 
 (defun vf-cleanup (beg end)
@@ -148,6 +157,8 @@ incomplete formatting."
   "Visually format the buffer without modifying it."
   (interactive)
   (vf-region (point-min) (point-max)))
+
+(defvar vf-stupid-delay 0.1)
 
 ;;;###autoload
 (defun virtual-format-region (beg end)
@@ -168,7 +179,7 @@ incomplete formatting."
      (if (commandp vf-buffer-formatter-function)
          (call-interactively vf-buffer-formatter-function)
        (funcall vf-buffer-formatter-function))
-     (sit-for 1)) ; TODO: get rid of this dirty hack by finding a proper way to trigger an AST update!
+     (sit-for vf-stupid-delay)) ; TODO: get rid of this dirty hack by finding a proper way to trigger an AST update!
     (with-silent-modifications
       (vf--depth-first-walk
        node-in-region
@@ -183,7 +194,9 @@ incomplete formatting."
 (defun virtual-format-buffer-incrementally ()
   "Incrementally format the buffer without modifying it."
   (interactive)
-  (user-error "This command is not implemented"))
+  (message "Virtually formatting buffer incrementally...")
+  (vf--incremental-walk (treesit-buffer-root-node))
+  (message "Virtually formatting buffer incrementally... Done!"))
 
 ;;;###autoload
 (define-minor-mode virtual-format-mode
