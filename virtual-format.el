@@ -1,4 +1,4 @@
-;;; virtual-format.el --- Virtually format buffer without modifing it -*- lexical-binding: t; -*-
+;;; virtual-format.el --- Virtually format buffer without modifying it -*- lexical-binding: t; -*-
 ;;
 ;; Copyright (C) 2024 Abdelhak Bougouffa
 ;;
@@ -16,7 +16,7 @@
 ;;
 ;;; Commentary:
 ;;
-;;  Format buffer without modifing it
+;;  Format buffer without modifying it
 ;;
 ;;; Code:
 
@@ -47,10 +47,13 @@ incomplete formatting."
   :group 'virtual-format
   :type 'boolean)
 
+(defcustom vf-jump-on-incomplete-formatting nil
+  "Jump to the problematic node when `virtual-format' fails to continue."
+  :group 'virtual-format
+  :type 'boolean)
+
 
 ;;; Internals
-
-(defvar-local vf--buffer-text-props nil)
 
 (defmacro vf--with-fmt-buf (&rest body)
   "Run BODY in the formatted buffer."
@@ -59,32 +62,68 @@ incomplete formatting."
      (setq-local default-directory dir)
      ,@body)))
 
+(defun vf--region ()
+  "Return the region bounds or the buffer bounds."
+  (if (use-region-p) (car (region-bounds)) (cons (point-min) (point-max))))
+
+;; Debug
+
+(defvar vf--debug-faces '(highlight region isearch holiday))
+(defvar vf--debug-face-id 0)
+
+(defvar vf-debug nil)
+
+(defun vf--debug-highlight-fmt-spaces (pos-beg-fmt pos-end-fmt)
+  (when vf-debug
+    (vf--with-fmt-buf
+     (put-text-property
+      pos-beg-fmt pos-end-fmt 'face
+      (nth (setq vf--debug-face-id
+                 (mod (1+ vf--debug-face-id) (length vf--debug-faces)))
+           vf--debug-faces)))))
+
+;; Core
+
+(defun vf--copy-formatting (beg end fmt)
+  "Copy formatting to the current buffer at (BEG . END) from FMT."
+  ;; In cases like "}print", the end of "}" is the same as the
+  ;; beginning of "print", we cannot put text property on null
+  ;; string, so we take the "p" from "print" and prepend the
+  ;; formatted spaces to it
+  (when (= beg end)
+    (setq fmt (concat fmt (buffer-substring end (1+ end)))
+          end (1+ end)))
+  (unless (string= (buffer-substring beg end) fmt)
+    (add-text-properties beg end `(display ,fmt virtual-format-text t))))
+
 (defun vf--depth-first-walk (&optional node node-fmt prev-node prev-node-fmt)
   "Recursively walk NODE and NODE-FMT, with PREV-NODE and PREV-NODE-FMT."
-  (let ((node (or node (treesit-buffer-root-node)))
-        (node-fmt (or node-fmt (vf--with-fmt-buf (treesit-buffer-root-node))))
-        (prev-leaf prev-node)
+  (let ((prev-leaf prev-node)
         (prev-leaf-fmt prev-node-fmt))
     (when (/= (treesit-node-child-count node) (treesit-node-child-count node-fmt))
-      (unless vf-keep-incomplete-formatting (vf-cleanup))
-      (user-error "Incomplete formatting"))
+      (unless vf-keep-incomplete-formatting (vf-cleanup (point-min) (point-max)))
+      (let* ((pos (treesit-node-start node))
+             (line (line-number-at-pos pos))
+             (col (save-excursion (goto-char pos) (- pos (pos-bol)))))
+        (when vf-jump-on-incomplete-formatting
+          (goto-char pos) ; Go to the problematic position
+          (recenter)
+          ;; When `pulsar' is available, pulse the problematic line
+          (and (fboundp 'pulsar-pulse-line) (pulsar-pulse-line)))
+        (user-error "Incomplete formatting at node %S at %d:%d" (treesit-node-type node) line col)))
     (dotimes (i (treesit-node-child-count node))
       (let* ((n (treesit-node-child node i))
              (n-fmt (treesit-node-child node-fmt i)))
         (if (zerop (treesit-node-child-count n)) ; leaf
-            (let* ((pos-beg
-                    (or (and prev-leaf (max 1 (1- (treesit-node-end prev-leaf))))
-                        (point-min)))
+            (let* ((pos-beg (or (and prev-leaf (treesit-node-end prev-leaf))
+                                (treesit-node-start node)))
                    (pos-end (treesit-node-start n))
-                   (pos-beg-fmt
-                    (vf--with-fmt-buf
-                     (or (and prev-leaf-fmt (max 1 (1- (treesit-node-end prev-leaf-fmt))))
-                         (point-min))))
-                   (pos-end-fmt (treesit-node-start n-fmt))
+                   (pos-beg-fmt (vf--with-fmt-buf
+                                 (or (and prev-leaf-fmt (treesit-node-end prev-leaf-fmt))
+                                     (treesit-node-start node-fmt))))
+                   (pos-end-fmt (vf--with-fmt-buf (treesit-node-start n-fmt)))
                    (fmt-spaces (vf--with-fmt-buf (buffer-substring pos-beg-fmt pos-end-fmt))))
-              (unless (string= (buffer-substring pos-beg pos-end) fmt-spaces)
-                (push (list pos-beg pos-end fmt-spaces) vf--buffer-text-props)
-                (put-text-property pos-beg pos-end 'display fmt-spaces))
+              (vf--copy-formatting pos-beg pos-end fmt-spaces)
               (setq prev-leaf n
                     prev-leaf-fmt n-fmt))
           (let ((last-nodes (vf--depth-first-walk n n-fmt prev-leaf prev-leaf-fmt)))
@@ -92,29 +131,34 @@ incomplete formatting."
                   prev-leaf-fmt (cdr last-nodes))))))
     (cons prev-leaf prev-leaf-fmt)))
 
-
 ;;; Commands
 
-(defun vf-cleanup ()
-  "Cleanup the visual formatting."
-  (interactive)
+(defun vf-cleanup (beg end)
+  "Cleanup the visual formatting in region (BEG . END)."
+  (interactive (let ((reg (vf--region))) (list (car reg) (cdr reg))))
   (with-silent-modifications
-    (let ((props vf--buffer-text-props))
-      (setq vf--buffer-text-props nil)
-      (dolist (spec props)
-        (let ((pos-beg (nth 0 spec))
-              (pos-end (nth 1 spec)))
-          (remove-text-properties pos-beg pos-end '(display nil)))))))
+    (while (and (< beg end) (setq beg (text-property-any beg end 'virtual-format-text t)))
+      (remove-text-properties
+       beg
+       (setq beg (or (text-property-not-all beg end 'virtual-format-text t) end))
+       '(display nil virtual-format-text nil)))))
 
 ;;;###autoload
 (defun virtual-format-buffer ()
-  "Visually format the buffer without modifing it."
+  "Visually format the buffer without modifying it."
   (interactive)
-  (vf-cleanup)
-  (let ((content (buffer-string))
-        (mode major-mode)
-        (buf-tab-width tab-width)
-        (buf-standard-indent standard-indent))
+  (vf-region (point-min) (point-max)))
+
+;;;###autoload
+(defun virtual-format-region (beg end)
+  "Visually format the (BEG . END) region without modifying it."
+  (interactive "r")
+  (vf-cleanup beg end)
+  (let* ((mode major-mode)
+         (buf-tab-width tab-width)
+         (buf-standard-indent standard-indent)
+         (node-in-region (treesit-node-on (1+ beg) (1- end)))
+         (content (buffer-substring (treesit-node-start node-in-region) (treesit-node-end node-in-region))))
     (vf--with-fmt-buf
      (setq-local tab-width buf-tab-width
                  standard-indent buf-standard-indent)
@@ -126,14 +170,27 @@ incomplete formatting."
        (funcall vf-buffer-formatter-function))
      (sit-for 1)) ; TODO: get rid of this dirty hack by finding a proper way to trigger an AST update!
     (with-silent-modifications
-      (vf--depth-first-walk))))
+      (vf--depth-first-walk
+       node-in-region
+       (vf--with-fmt-buf
+        (or (car
+             (treesit-filter-child
+              (treesit-buffer-root-node)
+              (lambda (node) (string= (treesit-node-type node) (treesit-node-type node-in-region)))))
+            (treesit-buffer-root-node)))))))
+
+;;;###autoload
+(defun virtual-format-buffer-incrementally ()
+  "Incrementally format the buffer without modifying it."
+  (interactive)
+  (user-error "This command is not implemented"))
 
 ;;;###autoload
 (define-minor-mode virtual-format-mode
   "Visually format the buffer without modification."
   :lighter " VFmt"
   :global nil
-  (if vf-mode (vf-buffer) (vf-cleanup)))
+  (if vf-mode (vf-buffer) (vf-cleanup (point-min) (point-max))))
 
 
 (provide 'virtual-format)

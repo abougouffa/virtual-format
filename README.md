@@ -1,7 +1,7 @@
 Virtual Format
 ==
 
-This package provide a simple mode to visually format buffers without modifying
+This package provides a simple mode to visually format buffers without modifying
 them.
 
 
