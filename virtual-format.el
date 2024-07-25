@@ -51,6 +51,15 @@ incomplete formatting."
   :group 'virtual-format
   :type 'boolean)
 
+(defcustom virtual-format-persist-local-variables
+  '(default-directory
+    tab-width
+    standard-indent
+    virtual-format-buffer-formatter-function)
+  "Inherit thse local variables in the temporary buffer used for formatting."
+  :type '(repeat symbol)
+  :group 'virtual-format)
+
 
 ;;; Internals
 
@@ -58,10 +67,8 @@ incomplete formatting."
 
 (defmacro virtual-format--with-fmt-buf (&rest body)
   "Run BODY in the formatted buffer."
-  `(let ((dir default-directory))
-    (with-current-buffer (get-buffer-create (format " *virtual-format:%s*" (buffer-name)))
-     (setq-local default-directory dir)
-     ,@body)))
+  `(with-current-buffer (get-buffer-create (format " *virtual-format:%s*" (buffer-name)))
+    ,@body))
 
 (defun virtual-format--region ()
   "Return the region bounds or the buffer bounds."
@@ -172,21 +179,24 @@ incomplete formatting."
   (interactive "r")
   (virtual-format-cleanup beg end)
   (let* ((mode major-mode)
-         (buf-tab-width tab-width)
-         (buf-standard-indent standard-indent)
          (node-in-region (treesit-node-on (1+ beg) (1- end)))
-         (content (buffer-substring (treesit-node-start node-in-region) (treesit-node-end node-in-region)))
-         (formatter virtual-format-buffer-formatter-function)) ; To pass locally bound value to the other buffer
+         (content (buffer-substring (treesit-node-start node-in-region)
+                                    (treesit-node-end node-in-region)))
+         ;; Persist the values for some local variables in the temporary buffer
+         (local-vars (seq-filter
+                      (lambda (var)
+                        (memq (car var) virtual-format-persist-local-variables))
+                      (buffer-local-variables))))
     (virtual-format--with-fmt-buf
-     (setq-local tab-width buf-tab-width
-                 standard-indent buf-standard-indent)
-     (delay-mode-hooks (funcall mode))
      (delete-region (point-min) (point-max))
+     (delay-mode-hooks (funcall mode))
+     (dolist (var-val local-vars)
+       (set (make-local-variable (car var-val)) (cdr var-val)))
      (insert content)
      (with-temp-message (or (current-message) "") ; Inhibit messages so we can show the progress
-       (if (commandp formatter)
-           (call-interactively formatter)
-         (funcall formatter)))
+       (if (commandp virtual-format-buffer-formatter-function)
+           (call-interactively virtual-format-buffer-formatter-function)
+         (funcall virtual-format-buffer-formatter-function)))
      ;; TODO: get rid of this dirty hack by finding a proper way to trigger an AST update!
      (sit-for virtual-format-stupid-delay))
     (with-silent-modifications
@@ -196,7 +206,9 @@ incomplete formatting."
         (or (car ; Get the first node of the same type as the unformatted `node-in-region'
              (treesit-filter-child
               (treesit-buffer-root-node)
-              (lambda (node) (string= (treesit-node-type node) (treesit-node-type node-in-region)))))
+              (lambda (node)
+                (string= (treesit-node-type node)
+                         (treesit-node-type node-in-region)))))
             (treesit-buffer-root-node))))))) ; Default to root (when formatting the whole buffer)
 
 ;;;###autoload
