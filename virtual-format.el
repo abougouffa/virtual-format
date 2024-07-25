@@ -135,8 +135,8 @@ function that returns a number or nil."
 
 (defun virtual-format--incremental-walk (&optional node)
   "Recursively walk NODE."
-  (let ((virtual-format-jump-on-incomplete-formatting nil)
-        (virtual-format-keep-incomplete-formatting t))
+  (let (virtual-format-jump-on-incomplete-formatting
+        virtual-format-keep-incomplete-formatting)
     (condition-case nil
         (progn
           (message "Incrementally formatting buffer [%d%%] at node %S"
