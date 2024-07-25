@@ -20,6 +20,16 @@ Emacs being Emacs, I know that I can do something to format the buffer visually
 without actually modifying it. I've looked-up but didn't find a package that
 does this.
 
+### Example
+
+Having this dirty code:
+
+![Before virtually formatting the buffer](etc/before-virtual-format.png "Before virtually formatting the buffer")
+
+
+It becomes like this after calling `virtual-format-buffer`:
+
+![After virtually formatting the buffer](etc/after-virtual-format.png "After virtually formatting the buffer")
 
 ### How it works?
 
