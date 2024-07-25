@@ -56,8 +56,17 @@ incomplete formatting."
     tab-width
     standard-indent
     virtual-format-buffer-formatter-function)
-  "Inherit thse local variables in the temporary buffer used for formatting."
+  "Inherit these local variables in the temporary buffer used for formatting."
   :type '(repeat symbol)
+  :group 'virtual-format)
+
+(defcustom virtual-format-timeout
+  (lambda () (if (eq virtual-format-buffer-formatter-function 'apheleia-format-buffer) 0.2 nil))
+  "Timeout (in seconds) to wait for asynchronous formatters.
+
+Set to nil to disable waiting if your formatter is synchronous. Or to a
+function that returns a number or nil."
+  :type '(choice float function (symbol nil))
   :group 'virtual-format)
 
 
@@ -74,23 +83,8 @@ incomplete formatting."
   "Return the region bounds or the buffer bounds."
   (if (use-region-p) (car (region-bounds)) (cons (point-min) (point-max))))
 
-;; Debug
 
-(defvar virtual-format--debug-faces '(highlight region isearch holiday))
-(defvar virtual-format--debug-face-id 0)
-
-(defvar virtual-format-debug nil)
-
-(defun virtual-format--debug-highlight-fmt-spaces (pos-beg-fmt pos-end-fmt)
-  (when virtual-format-debug
-    (virtual-format--with-fmt-buf
-     (put-text-property
-      pos-beg-fmt pos-end-fmt 'face
-      (nth (setq virtual-format--debug-face-id
-                 (mod (1+ virtual-format--debug-face-id) (length virtual-format--debug-faces)))
-           virtual-format--debug-faces)))))
-
-;; Core
+;;; Core
 
 (defun virtual-format--copy-formatting (beg end fmt)
   "Copy formatting to the current buffer at (BEG . END) from FMT."
@@ -153,6 +147,7 @@ incomplete formatting."
          (unless (zerop (treesit-node-child-count child))
            (virtual-format--incremental-walk child)))))))
 
+
 ;;; Commands
 
 (defun virtual-format-cleanup (beg end)
@@ -170,8 +165,6 @@ incomplete formatting."
   "Visually format the buffer without modifying it."
   (interactive)
   (virtual-format-region (point-min) (point-max)))
-
-(defvar virtual-format-stupid-delay 0.2)
 
 ;;;###autoload
 (defun virtual-format-region (beg end)
@@ -193,12 +186,28 @@ incomplete formatting."
      (dolist (var-val local-vars)
        (set (make-local-variable (car var-val)) (cdr var-val)))
      (insert content)
-     (with-temp-message (or (current-message) "") ; Inhibit messages so we can show the progress
-       (if (commandp virtual-format-buffer-formatter-function)
-           (call-interactively virtual-format-buffer-formatter-function)
-         (funcall virtual-format-buffer-formatter-function)))
-     ;; TODO: get rid of this dirty hack by finding a proper way to trigger an AST update!
-     (sit-for virtual-format-stupid-delay))
+     ;; We first save the hash of the buffer content, then we run the formatter.
+     ;; When the formatter updates the buffer before returning, we can check at
+     ;; the end if the buffer content has changed and return subsequently.
+     ;; However, if the formatter does some async stuff or sets some special
+     ;; hooks that will update the buffer later, we cannot return immediately
+     ;; since the buffer content didn't change yet. So, we wait for some time
+     ;; before returning, hoping that the buffer has been updated.
+     (let ((buf-hash (buffer-hash)))
+       ;; Inhibit messages so we can show the progress over any message that can
+       ;; be displayed by the original formatter.
+       (with-temp-message (or (current-message) "")
+         (if (commandp virtual-format-buffer-formatter-function)
+             (call-interactively virtual-format-buffer-formatter-function)
+           (funcall virtual-format-buffer-formatter-function)))
+       ;; Check If the buffer has been formatted or not. If not (for example,
+       ;; the formatter works asynchronously), we wait for
+       ;; `virtual-format-timeout' before returning.
+       (when-let ((timeout (or (numberp virtual-format-timeout)
+                               (and (functionp virtual-format-timeout)
+                                    (funcall virtual-format-timeout))))
+                  ((equal buf-hash (buffer-hash))))
+         (sleep-for timeout))))
     (with-silent-modifications
       (virtual-format--depth-first-walk
        node-in-region
