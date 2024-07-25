@@ -59,7 +59,7 @@ incomplete formatting."
 (defmacro vf--with-fmt-buf (&rest body)
   "Run BODY in the formatted buffer."
   `(let ((dir default-directory))
-    (with-current-buffer (get-buffer-create (format " *virtual-format: %s*" (buffer-name)))
+    (with-current-buffer (get-buffer-create (format " *virtual-format:%s*" (buffer-name)))
      (setq-local default-directory dir)
      ,@body)))
 
@@ -175,26 +175,28 @@ incomplete formatting."
          (buf-tab-width tab-width)
          (buf-standard-indent standard-indent)
          (node-in-region (treesit-node-on (1+ beg) (1- end)))
-         (content (buffer-substring (treesit-node-start node-in-region) (treesit-node-end node-in-region))))
+         (content (buffer-substring (treesit-node-start node-in-region) (treesit-node-end node-in-region)))
+         (formatter vf-buffer-formatter-function)) ; To pass locally bound value to the other buffer
     (vf--with-fmt-buf
      (setq-local tab-width buf-tab-width
                  standard-indent buf-standard-indent)
      (delay-mode-hooks (funcall mode))
      (delete-region (point-min) (point-max))
      (insert content)
-     (if (commandp vf-buffer-formatter-function)
-         (call-interactively vf-buffer-formatter-function)
-       (funcall vf-buffer-formatter-function))
+     (with-temp-message (or (current-message) "") ; Inhibit messages so we can show the progress
+       (if (commandp formatter)
+           (call-interactively formatter)
+         (funcall formatter)))
      (sit-for vf-stupid-delay)) ; TODO: get rid of this dirty hack by finding a proper way to trigger an AST update!
     (with-silent-modifications
       (vf--depth-first-walk
        node-in-region
        (vf--with-fmt-buf
-        (or (car
+        (or (car ; Get the first node of the same type as the unformatted `node-in-region'
              (treesit-filter-child
               (treesit-buffer-root-node)
               (lambda (node) (string= (treesit-node-type node) (treesit-node-type node-in-region)))))
-            (treesit-buffer-root-node)))))))
+            (treesit-buffer-root-node))))))) ; Default to root (when formatting the whole buffer)
 
 ;;;###autoload
 (defun virtual-format-buffer-incrementally ()
