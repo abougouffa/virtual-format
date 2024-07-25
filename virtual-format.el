@@ -69,6 +69,25 @@ function that returns a number or nil."
   :type '(choice float function (symbol nil))
   :group 'virtual-format)
 
+(defcustom virtual-format-fontify-formatted-spaces nil
+  "Display mid-dots in the formatted spaces.
+
+Useful to visually identify which regions have been modified by the
+formatter."
+  :type 'boolean
+  :group 'virtual-format)
+
+(defface virtual-format-formatted-spaces-face
+  '((((class color) (min-colors 88) (background light))
+     (:foreground "azure3"))
+    (((class color) (min-colors 88) (background dark))
+     (:foreground "azure4")))
+  "Face for highlighting Isearch matches."
+  :group 'virtual-format)
+
+(defvar virtual-format-fontify-space-char "·")
+(defvar virtual-format-fontify-newline-char "¶")
+
 
 ;;; Internals
 
@@ -125,6 +144,13 @@ function that returns a number or nil."
                                      (treesit-node-start node-fmt))))
                    (pos-end-fmt (virtual-format--with-fmt-buf (treesit-node-start n-fmt)))
                    (fmt-spaces (virtual-format--with-fmt-buf (buffer-substring pos-beg-fmt pos-end-fmt))))
+              (when (and virtual-format-fontify-formatted-spaces
+                         (not (string-empty-p fmt-spaces)))
+                (let ((new-fmt (string-replace
+                                "\n" (concat virtual-format-fontify-newline-char "\n")
+                                (string-replace
+                                 " " virtual-format-fontify-space-char fmt-spaces))))
+                  (setq fmt-spaces (propertize new-fmt 'face 'virtual-format-formatted-spaces-face))))
               (virtual-format--copy-formatting pos-beg pos-end fmt-spaces)
               (setq prev-leaf n
                     prev-leaf-fmt n-fmt))
