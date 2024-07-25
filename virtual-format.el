@@ -164,7 +164,7 @@ incomplete formatting."
   (interactive)
   (vf-region (point-min) (point-max)))
 
-(defvar vf-stupid-delay 1.0)
+(defvar vf-stupid-delay 0.2)
 
 ;;;###autoload
 (defun virtual-format-region (beg end)
