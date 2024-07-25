@@ -137,8 +137,14 @@ incomplete formatting."
   (let ((vf-jump-on-incomplete-formatting nil)
         (vf-keep-incomplete-formatting t))
     (condition-case nil
-        (vf-region (treesit-node-start node) (treesit-node-end node))
-      (user-error (mapc #'vf--incremental-walk (treesit-node-children node))))))
+        (progn
+          (message "Incrementally formatting buffer [%d%%] at node %S"
+                   (/ (* 100 (treesit-node-start node)) (point-max)) (treesit-node-type node))
+          (vf-region (treesit-node-start node) (treesit-node-end node)))
+      (error
+       (dolist (child (treesit-node-children node))
+         (unless (zerop (treesit-node-child-count child))
+           (vf--incremental-walk child)))))))
 
 ;;; Commands
 
@@ -194,9 +200,8 @@ incomplete formatting."
 (defun virtual-format-buffer-incrementally ()
   "Incrementally format the buffer without modifying it."
   (interactive)
-  (message "Virtually formatting buffer incrementally...")
   (vf--incremental-walk (treesit-buffer-root-node))
-  (message "Virtually formatting buffer incrementally... Done!"))
+  (message "Incrementally formatting buffer [Done!]"))
 
 ;;;###autoload
 (define-minor-mode virtual-format-mode
