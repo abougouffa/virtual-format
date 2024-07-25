@@ -36,10 +36,26 @@ formatted buffer.
 
 #### Assumptions
 
-In order to work, `virtual-format` make the following assumption:
+For `virtual-format-region` and `virtual-format-buffer`, the following
+assumption has to be verified:
 
 > [!CAUTION]
 > The formatted buffer **should** have the same AST as the original buffer
 
 In other words, if the used formatter adds some instructions the original code,
 like replacing an `if-else` with a `switch-case` or something similar.
+
+Sometimes, depending on the buffer being formatted or not, Tree Sitter might
+produce a buggy AST (in such cases, you should report the issue in the
+corresponding Tree Sitter grammar repository). This can make the virtual
+formatting fail, in this case, you can set the
+`virtual-format-keep-incomplete-formatting` to non-nil in order to keep the
+formatted regions. If you want to see where the formatting has failed, you can
+set `virtual-format-jump-on-incomplete-formatting` so the point (cursor) jumps
+to the problematic position when the error occurs.
+
+These issues can also happen when the used formatter modifies the code
+significantly.
+
+In both cases, you can try to invoke `virtual-format-buffer-incrementally` so
+`virtual-format` does its best to format the buffer.
