@@ -55,9 +55,11 @@ incomplete formatting."
   '(default-directory
     tab-width
     standard-indent
-    virtual-format-buffer-formatter-function)
+    virtual-format-buffer-formatter-function
+    "-offset$" ; Language specific indentation variables
+    "-style$")
   "Inherit these local variables in the temporary buffer used for formatting."
-  :type '(repeat symbol)
+  :type '(repeat (choice symbol regexp))
   :group 'virtual-format)
 
 (defcustom virtual-format-timeout
@@ -202,10 +204,14 @@ formatter."
          (content (buffer-substring (treesit-node-start node-in-region)
                                     (treesit-node-end node-in-region)))
          ;; Persist the values for some local variables in the temporary buffer
-         (local-vars (seq-filter
-                      (lambda (var)
-                        (memq (car var) virtual-format-persist-local-variables))
-                      (buffer-local-variables))))
+         (local-vars
+          (seq-filter
+           (lambda (local-var)
+             (or (memq (car local-var)
+                       (seq-filter #'symbolp virtual-format-persist-local-variables))
+                 (cl-some (lambda (regexp) (string-match-p regexp (symbol-name (car local-var))))
+                          (seq-filter #'stringp virtual-format-persist-local-variables))))
+           (buffer-local-variables))))
     (virtual-format--with-fmt-buf
      (delete-region (point-min) (point-max))
      (delay-mode-hooks (funcall mode))
