@@ -104,9 +104,6 @@ formatter."
   "Return the region bounds or the buffer bounds."
   (if (use-region-p) (car (region-bounds)) (cons (point-min) (point-max))))
 
-
-;;; Core
-
 (defun virtual-format--copy-formatting (beg end fmt)
   "Copy formatting to the current buffer at (BEG . END) from FMT."
   (unless (string= (buffer-substring beg end) fmt)
@@ -127,21 +124,28 @@ formatter."
             end (1+ end)))
     (add-text-properties beg end `(display ,fmt virtual-format-text t))))
 
-(defun virtual-format--depth-first-walk (&optional node node-fmt prev-node prev-node-fmt)
+(defun virtual-format--check-state (node node-fmt)
+  "Check the state at NODE and NODE-FMT.
+Signal the error according to settings."
+  (when (or (not (string= (treesit-node-type node) (treesit-node-type node-fmt)))
+            (/= (treesit-node-child-count node) (treesit-node-child-count node-fmt)))
+    (unless virtual-format-keep-incomplete-formatting
+      (virtual-format-cleanup (treesit-node-start node) (treesit-node-end node)))
+    (let* ((pos (treesit-node-start node))
+           (line (line-number-at-pos pos))
+           (col (save-excursion (goto-char pos) (- pos (pos-bol)))))
+      (when virtual-format-jump-on-incomplete-formatting
+        (goto-char pos) ; Go to the problematic position
+        (recenter)
+        ;; When `pulsar' is available, pulse the problematic line
+        (and (fboundp 'pulsar-pulse-line) (pulsar-pulse-line)))
+      (user-error "Incomplete formatting at node %S at %d:%d" (treesit-node-type node) line col))))
+
+(defun virtual-format-depth-first-walk (node node-fmt &optional prev-node prev-node-fmt)
   "Recursively walk NODE and NODE-FMT, with PREV-NODE and PREV-NODE-FMT."
   (let ((prev-leaf prev-node)
         (prev-leaf-fmt prev-node-fmt))
-    (when (/= (treesit-node-child-count node) (treesit-node-child-count node-fmt))
-      (unless virtual-format-keep-incomplete-formatting (virtual-format-cleanup (treesit-node-start node) (treesit-node-end node)))
-      (let* ((pos (treesit-node-start node))
-             (line (line-number-at-pos pos))
-             (col (save-excursion (goto-char pos) (- pos (pos-bol)))))
-        (when virtual-format-jump-on-incomplete-formatting
-          (goto-char pos) ; Go to the problematic position
-          (recenter)
-          ;; When `pulsar' is available, pulse the problematic line
-          (and (fboundp 'pulsar-pulse-line) (pulsar-pulse-line)))
-        (user-error "Incomplete formatting at node %S at %d:%d" (treesit-node-type node) line col)))
+    (virtual-format--check-state node node-fmt)
     (dotimes (i (treesit-node-child-count node))
       (let* ((n (treesit-node-child node i))
              (n-fmt (treesit-node-child node-fmt i)))
