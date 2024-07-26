@@ -89,13 +89,12 @@ formatter."
 
 (defvar virtual-format-fontify-space-char "·")
 (defvar virtual-format-fontify-newline-char "¶")
+(defvar virtual-format-signal-error-on-incomplete-formatting t)
 
 
 ;;; Internals
 
-(defvar virtual-format-signal-error-on-incomplete-formatting t)
-
-(defmacro virtual-format--with-fmt-buf (&rest body)
+(defmacro virtual-format-with-formatted-buffuer (&rest body)
   "Run BODY in the formatted buffer."
   `(with-current-buffer (get-buffer-create (format " *virtual-format:%s*" (buffer-name)))
     ,@body))
@@ -153,20 +152,20 @@ Signal the error according to settings."
             (let* ((pos-beg (or (and prev-leaf (treesit-node-end prev-leaf))
                                 (treesit-node-start node)))
                    (pos-end (treesit-node-start n))
-                   (pos-beg-fmt (virtual-format--with-fmt-buf
+                   (pos-beg-fmt (virtual-format-with-formatted-buffuer
                                  (or (and prev-leaf-fmt (treesit-node-end prev-leaf-fmt))
                                      (treesit-node-start node-fmt))))
-                   (pos-end-fmt (virtual-format--with-fmt-buf (treesit-node-start n-fmt)))
-                   (fmt-spaces (virtual-format--with-fmt-buf (buffer-substring pos-beg-fmt pos-end-fmt))))
+                   (pos-end-fmt (virtual-format-with-formatted-buffuer (treesit-node-start n-fmt)))
+                   (fmt-spaces (virtual-format-with-formatted-buffuer (buffer-substring pos-beg-fmt pos-end-fmt))))
               (virtual-format--copy-formatting pos-beg pos-end fmt-spaces)
               (setq prev-leaf n
                     prev-leaf-fmt n-fmt))
-          (let ((last-nodes (virtual-format--depth-first-walk n n-fmt prev-leaf prev-leaf-fmt)))
+          (let ((last-nodes (virtual-format-depth-first-walk n n-fmt prev-leaf prev-leaf-fmt)))
             (setq prev-leaf (car last-nodes)
                   prev-leaf-fmt (cdr last-nodes))))))
     (cons prev-leaf prev-leaf-fmt)))
 
-(defun virtual-format--incremental-walk (&optional node)
+(defun virtual-format-incremental-walk (&optional node)
   "Recursively walk NODE."
   (let (virtual-format-jump-on-incomplete-formatting
         virtual-format-keep-incomplete-formatting)
@@ -178,7 +177,7 @@ Signal the error according to settings."
       (error
        (dolist (child (treesit-node-children node))
          (unless (zerop (treesit-node-child-count child))
-           (virtual-format--incremental-walk child)))))))
+           (virtual-format-incremental-walk child)))))))
 
 
 ;;; Commands
@@ -192,12 +191,6 @@ Signal the error according to settings."
        beg
        (setq beg (or (text-property-not-all beg end 'virtual-format-text t) end))
        '(display nil virtual-format-text nil)))))
-
-;;;###autoload
-(defun virtual-format-buffer ()
-  "Visually format the buffer without modifying it."
-  (interactive)
-  (virtual-format-region (point-min) (point-max)))
 
 ;;;###autoload
 (defun virtual-format-region (beg end)
@@ -217,7 +210,7 @@ Signal the error according to settings."
                  (cl-some (lambda (regexp) (string-match-p regexp (symbol-name (car local-var))))
                           (seq-filter #'stringp virtual-format-persist-local-variables))))
            (buffer-local-variables))))
-    (virtual-format--with-fmt-buf
+    (virtual-format-with-formatted-buffuer
      (delete-region (point-min) (point-max))
      (delay-mode-hooks (funcall mode))
      (dolist (var-val local-vars)
@@ -246,9 +239,9 @@ Signal the error according to settings."
                   ((equal buf-hash (buffer-hash))))
          (sleep-for timeout))))
     (with-silent-modifications
-      (virtual-format--depth-first-walk
+      (virtual-format-depth-first-walk
        node-in-region
-       (virtual-format--with-fmt-buf
+       (virtual-format-with-formatted-buffuer
         (or (car ; Get the first node of the same type as the unformatted `node-in-region'
              (treesit-filter-child
               (treesit-buffer-root-node)
@@ -258,10 +251,16 @@ Signal the error according to settings."
             (treesit-buffer-root-node))))))) ; Default to root (when formatting the whole buffer)
 
 ;;;###autoload
+(defun virtual-format-buffer ()
+  "Visually format the buffer without modifying it."
+  (interactive)
+  (virtual-format-region (point-min) (point-max)))
+
+;;;###autoload
 (defun virtual-format-buffer-incrementally ()
   "Incrementally format the buffer without modifying it."
   (interactive)
-  (virtual-format--incremental-walk (treesit-buffer-root-node))
+  (virtual-format-incremental-walk (treesit-buffer-root-node))
   (message "Incrementally formatting buffer [Done!]"))
 
 ;;;###autoload
