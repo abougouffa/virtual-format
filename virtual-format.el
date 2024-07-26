@@ -109,14 +109,22 @@ formatter."
 
 (defun virtual-format--copy-formatting (beg end fmt)
   "Copy formatting to the current buffer at (BEG . END) from FMT."
-  ;; In cases like "}print", the end of "}" is the same as the
-  ;; beginning of "print", we cannot put text property on null
-  ;; string, so we take the "p" from "print" and prepend the
-  ;; formatted spaces to it
-  (when (= beg end)
-    (setq fmt (concat fmt (buffer-substring end (1+ end)))
-          end (1+ end)))
   (unless (string= (buffer-substring beg end) fmt)
+    (when (and virtual-format-fontify-formatted-spaces
+               (not (string-empty-p fmt)))
+      (let ((new-fmt (string-replace
+                      "\n" (concat virtual-format-fontify-newline-char "\n")
+                      (string-replace
+                       " " virtual-format-fontify-space-char fmt))))
+        (setq fmt (propertize new-fmt 'face 'virtual-format-formatted-spaces-face))))
+
+    ;; In cases like "}print", the end of "}" is the same as the
+    ;; beginning of "print", we cannot put text property on null
+    ;; string, so we take the "p" from "print" and prepend the
+    ;; formatted spaces to it
+    (when (= beg end)
+      (setq fmt (concat fmt (buffer-substring end (1+ end)))
+            end (1+ end)))
     (add-text-properties beg end `(display ,fmt virtual-format-text t))))
 
 (defun virtual-format--depth-first-walk (&optional node node-fmt prev-node prev-node-fmt)
@@ -146,13 +154,6 @@ formatter."
                                      (treesit-node-start node-fmt))))
                    (pos-end-fmt (virtual-format--with-fmt-buf (treesit-node-start n-fmt)))
                    (fmt-spaces (virtual-format--with-fmt-buf (buffer-substring pos-beg-fmt pos-end-fmt))))
-              (when (and virtual-format-fontify-formatted-spaces
-                         (not (string-empty-p fmt-spaces)))
-                (let ((new-fmt (string-replace
-                                "\n" (concat virtual-format-fontify-newline-char "\n")
-                                (string-replace
-                                 " " virtual-format-fontify-space-char fmt-spaces))))
-                  (setq fmt-spaces (propertize new-fmt 'face 'virtual-format-formatted-spaces-face))))
               (virtual-format--copy-formatting pos-beg pos-end fmt-spaces)
               (setq prev-leaf n
                     prev-leaf-fmt n-fmt))
