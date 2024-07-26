@@ -7,9 +7,9 @@ them.
 
 ### Motivation
 
-Indeed, when working on big and dirty projects, we usually face the problem of
-badly formatted source files (mixed tabs and spaces, messy indentation,
-inconsistent code formatting, etc.)
+When working on big and dirty projects, we usually face the problem of badly
+formatted source files (mixed tabs and spaces, messy indentation, inconsistent
+code formatting, etc.)
 
 The trivial (and naive) way of dealing with this kind of problems is to format
 the files and commit them to the central repository. However, in real world
@@ -26,23 +26,27 @@ Having this dirty code:
 
 ![Before virtually formatting the buffer](etc/before-virtual-format.png "Before virtually formatting the buffer")
 
-
 It becomes like this after calling `virtual-format-buffer`:
 
 ![After virtually formatting the buffer](etc/after-virtual-format.png "After virtually formatting the buffer")
 
 ### How it works?
 
-The idea behind this package is quite simple, for a messy buffer, it creates a
-temporary buffer with the same content and formats it with the function of your
+The idea behind this package is quite simple, for a target buffer, it creates a
+temporary buffer with the same content and formats it with the formatter of your
 choice (customize it via `virtual-format-buffer-formatter-function`). Then,
-transposes the spaces from the formatted buffer to the original buffers via
-Emacs' _text properties_.
+transposes the spaces and newlines from the formatted buffer to the original
+buffers via Emacs' _text properties_.
 
 In order to know where to look, `virtual-format` uses Tree Sitter (via Emacs 29+
-`treesit`), it walks the AST for the original buffer and the formatted buffer
-set the spaces in the original buffer according to these observed in the
-formatted buffer.
+`treesit`), it walks the AST for the original buffer and the formatted buffer to
+the token level, and then, it copies the spaces/newlines between the tokens from
+the formatted buffer to the original one. What we mean here by *copying* is the
+fact that Emacs will **display** the spaces present in the original buffer
+**as** the spaces observed in the formatted buffer, hence, you don't change the
+buffer content and we still have editing access to the code in between. This
+means that, when editing and saving virtually formatted buffer, we will not
+change the formatting, only the manually edited part gets written to the file.
 
 #### Assumptions
 
@@ -67,5 +71,6 @@ to the problematic position when the error occurs.
 These issues can also happen when the used formatter modifies the code
 significantly.
 
-In both cases, you can try to invoke `virtual-format-buffer-incrementally` so
-`virtual-format` does its best to format the buffer.
+> [!IMPORTANT]
+> In both cases, you can try to invoke `virtual-format-buffer-incrementally` so
+> `virtual-format` does its best to format the buffer.
