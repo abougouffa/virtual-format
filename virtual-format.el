@@ -87,6 +87,9 @@ formatter."
   "Face for highlighting Isearch matches."
   :group 'virtual-format)
 
+(defvar-keymap virtual-format-view-mode-map
+  "q" #'virtual-format-view-quit)
+
 (defvar virtual-format-fontify-space-char "·")
 (defvar virtual-format-fontify-newline-char "¶")
 (defvar virtual-format-signal-error-on-incomplete-formatting t)
@@ -99,35 +102,38 @@ formatter."
   `(with-current-buffer (get-buffer-create (format " *virtual-format:%s*" (buffer-name)))
     ,@body))
 
-(defun virtual-format--region ()
+(defun virtual-format--get-region-or-whole-buffer ()
   "Return the region bounds or the buffer bounds."
-  (if (use-region-p) (car (region-bounds)) (cons (point-min) (point-max))))
+  (if (use-region-p)
+      (let ((pos (car (region-bounds))))
+        (list (car pos) (cdr pos)))
+    (list (point-min) (point-max))))
 
 (defun virtual-format--copy-formatting (beg end fmt)
   "Copy formatting to the current buffer at (BEG . END) from FMT."
   (unless (string= (buffer-substring beg end) fmt)
-    (when (and virtual-format-fontify-formatted-spaces
-               (not (string-empty-p fmt)))
+    ;; Fontify the spaces/newlines if requested
+    (when (and virtual-format-fontify-formatted-spaces (not (string-empty-p fmt)))
       (let ((new-fmt (string-replace
                       "\n" (concat virtual-format-fontify-newline-char "\n")
                       (string-replace
                        " " virtual-format-fontify-space-char fmt))))
         (setq fmt (propertize new-fmt 'face 'virtual-format-formatted-spaces-face))))
-
-    ;; In cases like "}print", the end of "}" is the same as the
-    ;; beginning of "print", we cannot put text property on null
-    ;; string, so we take the "p" from "print" and prepend the
-    ;; formatted spaces to it
+    ;; In cases like "}print", the end of "}" is the same as the beginning of
+    ;; "print", we cannot put text property on null string, so we take the "p"
+    ;; from "print" and prepend the formatted spaces to it
     (when (= beg end)
       (setq fmt (concat fmt (buffer-substring end (1+ end)))
             end (1+ end)))
+    ;; Display the region between `beg' and `end' in the original buffer as the
+    ;; spaces/newlines taken from the formatted buffer
     (add-text-properties beg end `(display ,fmt virtual-format-text t))))
 
 (defun virtual-format--check-state (node node-fmt)
   "Check the state at NODE and NODE-FMT.
 Signal the error according to settings."
-  (when (or (not (string= (treesit-node-type node) (treesit-node-type node-fmt)))
-            (/= (treesit-node-child-count node) (treesit-node-child-count node-fmt)))
+  (unless (and (string= (treesit-node-type node) (treesit-node-type node-fmt))
+               (= (treesit-node-child-count node) (treesit-node-child-count node-fmt)))
     (unless virtual-format-keep-incomplete-formatting
       (virtual-format-cleanup (treesit-node-start node) (treesit-node-end node)))
     (let* ((pos (treesit-node-start node))
@@ -139,6 +145,72 @@ Signal the error according to settings."
         ;; When `pulsar' is available, pulse the problematic line
         (and (fboundp 'pulsar-pulse-line) (pulsar-pulse-line)))
       (user-error "Incomplete formatting at node %S at %d:%d" (treesit-node-type node) line col))))
+
+(defun virtual-format--call-formatter (beg end &optional transfer-formatting)
+  "Call formatter for region (BEG . END).
+When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
+  (let* ((mode major-mode)
+         (node-in-region (treesit-node-on (1+ beg) (1- end)))
+         (content (buffer-substring (treesit-node-start node-in-region)
+                                    (treesit-node-end node-in-region)))
+         ;; Persist the values for some local variables in the temporary buffer
+         (local-vars
+          (seq-filter
+           (lambda (local-var)
+             (or (memq (car local-var)
+                       (seq-filter #'symbolp virtual-format-persist-local-variables))
+                 (cl-some (lambda (regexp) (string-match-p regexp (symbol-name (car local-var))))
+                          (seq-filter #'stringp virtual-format-persist-local-variables))))
+           (buffer-local-variables))))
+    (virtual-format-with-formatted-buffuer
+     (delete-region (point-min) (point-max))
+     (delay-mode-hooks (funcall mode))
+     (dolist (var-val local-vars)
+       (set (make-local-variable (car var-val)) (cdr var-val)))
+     (insert content)
+     ;; We first save the hash of the buffer content, then we run the formatter.
+     ;; When the formatter updates the buffer before returning, we can check at
+     ;; the end if the buffer content has changed and return subsequently.
+     ;; However, if the formatter does some async stuff or sets some special
+     ;; hooks that will update the buffer later, we cannot return immediately
+     ;; since the buffer content didn't change yet. So, we wait for some time
+     ;; before returning, hoping that the buffer has been updated.
+     (let ((buf-hash (buffer-hash)))
+       ;; Inhibit messages so we can show the progress over any message that can
+       ;; be displayed by the original formatter.
+       (with-temp-message (or (current-message) "")
+         (if (commandp virtual-format-buffer-formatter-function)
+             (call-interactively virtual-format-buffer-formatter-function)
+           (funcall virtual-format-buffer-formatter-function)))
+       ;; Check If the buffer has been formatted or not. If not (for example,
+       ;; the formatter works asynchronously), we wait for
+       ;; `virtual-format-timeout' before returning.
+       (when-let ((timeout (or (numberp virtual-format-timeout)
+                               (and (functionp virtual-format-timeout)
+                                    (funcall virtual-format-timeout))))
+                  ((equal buf-hash (buffer-hash))))
+         (sleep-for timeout))))
+    (when transfer-formatting
+      (with-silent-modifications
+        (virtual-format-depth-first-walk
+         node-in-region
+         (virtual-format-with-formatted-buffuer
+          (or (car ; Get the first node of the same type as the unformatted `node-in-region'
+               (treesit-filter-child
+                (treesit-buffer-root-node)
+                (lambda (node)
+                  (string= (treesit-node-type node)
+                           (treesit-node-type node-in-region)))))
+              (treesit-buffer-root-node)))))))) ; Default to root (when formatting the whole buffer)
+
+(defun virtual-format-buffer-view ()
+  "Display read-only formatted code of the current buffer."
+  (virtual-format--call-formatter (point-min) (point-max))
+  (with-silent-modifications
+    (delete-region (point-min) (point-max))
+    (insert (virtual-format-with-formatted-buffuer (buffer-string)))
+    (font-lock-update)
+    (read-only-mode 1)))
 
 (defun virtual-format-depth-first-walk (node node-fmt &optional prev-node prev-node-fmt)
   "Recursively walk NODE and NODE-FMT, with PREV-NODE and PREV-NODE-FMT."
@@ -184,7 +256,7 @@ Signal the error according to settings."
 
 (defun virtual-format-cleanup (beg end)
   "Cleanup the visual formatting in region (BEG . END)."
-  (interactive (let ((reg (virtual-format--region))) (list (car reg) (cdr reg))))
+  (interactive (virtual-format--get-region-or-whole-buffer))
   (with-silent-modifications
     (while (and (< beg end) (setq beg (text-property-any beg end 'virtual-format-text t)))
       (remove-text-properties
@@ -197,58 +269,7 @@ Signal the error according to settings."
   "Visually format the (BEG . END) region without modifying it."
   (interactive "r")
   (virtual-format-cleanup beg end)
-  (let* ((mode major-mode)
-         (node-in-region (treesit-node-on (1+ beg) (1- end)))
-         (content (buffer-substring (treesit-node-start node-in-region)
-                                    (treesit-node-end node-in-region)))
-         ;; Persist the values for some local variables in the temporary buffer
-         (local-vars
-          (seq-filter
-           (lambda (local-var)
-             (or (memq (car local-var)
-                       (seq-filter #'symbolp virtual-format-persist-local-variables))
-                 (cl-some (lambda (regexp) (string-match-p regexp (symbol-name (car local-var))))
-                          (seq-filter #'stringp virtual-format-persist-local-variables))))
-           (buffer-local-variables))))
-    (virtual-format-with-formatted-buffuer
-     (delete-region (point-min) (point-max))
-     (delay-mode-hooks (funcall mode))
-     (dolist (var-val local-vars)
-       (set (make-local-variable (car var-val)) (cdr var-val)))
-     (insert content)
-     ;; We first save the hash of the buffer content, then we run the formatter.
-     ;; When the formatter updates the buffer before returning, we can check at
-     ;; the end if the buffer content has changed and return subsequently.
-     ;; However, if the formatter does some async stuff or sets some special
-     ;; hooks that will update the buffer later, we cannot return immediately
-     ;; since the buffer content didn't change yet. So, we wait for some time
-     ;; before returning, hoping that the buffer has been updated.
-     (let ((buf-hash (buffer-hash)))
-       ;; Inhibit messages so we can show the progress over any message that can
-       ;; be displayed by the original formatter.
-       (with-temp-message (or (current-message) "")
-         (if (commandp virtual-format-buffer-formatter-function)
-             (call-interactively virtual-format-buffer-formatter-function)
-           (funcall virtual-format-buffer-formatter-function)))
-       ;; Check If the buffer has been formatted or not. If not (for example,
-       ;; the formatter works asynchronously), we wait for
-       ;; `virtual-format-timeout' before returning.
-       (when-let ((timeout (or (numberp virtual-format-timeout)
-                               (and (functionp virtual-format-timeout)
-                                    (funcall virtual-format-timeout))))
-                  ((equal buf-hash (buffer-hash))))
-         (sleep-for timeout))))
-    (with-silent-modifications
-      (virtual-format-depth-first-walk
-       node-in-region
-       (virtual-format-with-formatted-buffuer
-        (or (car ; Get the first node of the same type as the unformatted `node-in-region'
-             (treesit-filter-child
-              (treesit-buffer-root-node)
-              (lambda (node)
-                (string= (treesit-node-type node)
-                         (treesit-node-type node-in-region)))))
-            (treesit-buffer-root-node))))))) ; Default to root (when formatting the whole buffer)
+  (virtual-format--call-formatter beg end t))
 
 ;;;###autoload
 (defun virtual-format-buffer ()
@@ -263,6 +284,12 @@ Signal the error according to settings."
   (virtual-format-incremental-walk (treesit-buffer-root-node))
   (message "Incrementally formatting buffer [Done!]"))
 
+(defun virtual-format-view-quit ()
+  "Quit the `virtual-format-view-mode'."
+  (interactive)
+  (revert-buffer t t t)
+  (read-only-mode -1))
+
 ;;;###autoload
 (define-minor-mode virtual-format-mode
   "Visually format the buffer without modification."
@@ -271,6 +298,21 @@ Signal the error according to settings."
   (if virtual-format-mode
       (virtual-format-buffer)
     (virtual-format-cleanup (point-min) (point-max))))
+
+;;;###autoload
+(define-minor-mode virtual-format-view-mode
+  "Display read-only formatted code of the current buffer.
+This command simply formats the code and displays it as read-only.
+It doesn't do any thing special with text properties. This can be used
+to view files if `virtual-format-buffer' and
+`virtual-format-buffer-incrementally' both failed to produce decent
+formatting."
+  :lighter " VFmt"
+  :keymap virtual-format-view-mode-map
+  :global nil
+  (if virtual-format-view-mode
+      (virtual-format-buffer-view)
+    (virtual-format-view-quit)))
 
 
 (provide 'virtual-format)
