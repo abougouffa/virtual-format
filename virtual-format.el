@@ -9,7 +9,7 @@
 ;; Version: 0.2.0
 ;; Keywords: convenience faces languages text
 ;; Homepage: https://github.com/abougouffa/virtual-format
-;; Package-Requires: ((emacs "28.1"))
+;; Package-Requires: ((emacs "29.1"))
 ;; SPDX-License-Identifier: GPL-3.0
 ;;
 ;; This file is not part of GNU Emacs.
