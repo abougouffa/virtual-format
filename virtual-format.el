@@ -28,7 +28,7 @@
   :group 'faces)
 
 (defcustom virtual-format-buffer-formatter-function
-  (or (cl-find-if #'fboundp '(apheleia-format-buffer format-all-buffer))
+  (or (cl-find-if #'fboundp '(format-all-buffer apheleia-format-buffer))
       (lambda () (user-error "Please customize `virtual-format-buffer-formatter-function'")))
   "The command/function backend used to format the buffer."
   :group 'virtual-format
