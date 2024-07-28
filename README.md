@@ -22,13 +22,10 @@ does this.
 
 ### Example
 
-Having this dirty code:
+Having this dirty code at the left side, it becomes like the one on the right
+side after calling `virtual-format-buffer`:
 
-![Before virtually formatting the buffer](etc/before-virtual-format.png "Before virtually formatting the buffer")
-
-It becomes like this after calling `virtual-format-buffer`:
-
-![After virtually formatting the buffer](etc/after-virtual-format.png "After virtually formatting the buffer")
+![Before and after virtually formatting the buffer](etc/virtual-format.png "Left: before virtually formatting the buffer, right: after")
 
 ### Basic usage
 
