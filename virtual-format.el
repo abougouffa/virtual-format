@@ -207,14 +207,23 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
                            (treesit-node-type node-in-region)))))
               (treesit-buffer-root-node)))))))) ; Default to root (when formatting the whole buffer)
 
-(defun virtual-format-buffer-view ()
+(defun virtual-format-buffer-mode-setup ()
   "Display read-only formatted code of the current buffer."
   (virtual-format--call-formatter (point-min) (point-max))
-  (with-silent-modifications
-    (delete-region (point-min) (point-max))
-    (insert (virtual-format-with-formatted-buffuer (buffer-string)))
-    (font-lock-update)
-    (read-only-mode 1)))
+  (if (string= (buffer-hash) (virtual-format-with-formatted-buffuer (buffer-hash)))
+      (progn
+        (virtual-format-view-mode -1)
+        (message "The buffer seems to be already formatted."))
+    (with-silent-modifications
+      (delete-region (point-min) (point-max))
+      (insert (virtual-format-with-formatted-buffuer (buffer-string)))
+      (font-lock-update)
+      (read-only-mode 1))))
+
+(defun virtual-format-view-mode-teardown ()
+  "Teardown `virtual-format-view-mode'."
+  (revert-buffer t t t)
+  (read-only-mode -1))
 
 (defun virtual-format-depth-first-walk (node node-fmt &optional prev-node prev-node-fmt)
   "Recursively walk NODE and NODE-FMT, with PREV-NODE and PREV-NODE-FMT."
@@ -295,8 +304,7 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
 (defun virtual-format-view-quit ()
   "Quit the `virtual-format-view-mode'."
   (interactive)
-  (revert-buffer t t t)
-  (read-only-mode -1))
+  (virtual-format-view-mode -1))
 
 ;;;###autoload
 (define-minor-mode virtual-format-mode
@@ -319,8 +327,8 @@ formatting."
   :keymap virtual-format-view-mode-map
   :global nil
   (if virtual-format-view-mode
-      (virtual-format-buffer-view)
-    (virtual-format-view-quit)))
+      (virtual-format-buffer-mode-setup)
+    (virtual-format-view-mode-teardown)))
 
 
 (provide 'virtual-format)
