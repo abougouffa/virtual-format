@@ -30,6 +30,25 @@ It becomes like this after calling `virtual-format-buffer`:
 
 ![After virtually formatting the buffer](etc/after-virtual-format.png "After virtually formatting the buffer")
 
+### Basic usage
+
+TLDR; you can use this package in one of the three scenarios:
+
+1. You can call `virtual-format-buffer`, `virtual-format-region` or
+   `virtual-format-mode` to virtually format the current buffer/region. If the
+   command succeeds, the buffer becomes formatted while you can modify the
+   buffer without affecting the original formatting.
+2. If the former commands failed to format the buffer, you can try the
+   `virtual-format-buffer-incrementally`, this command will try to format code
+   blocks from the top-level, and when a block fails, it tries to format each
+   sub-block independently. Please note that this strategy is quite slow and can
+   fail for some languages.
+3. As a last resort, in order to **view** a buffer as formatted without
+   modifying it. You can call the `virtual-format-view-mode`, this mode is very
+   simple, it only calls the formatter and displays the formatted buffer as
+   read-only. No fancy stuff are performed (actually, we don't even need Tree
+   Sitter for this mode).
+
 ### How it works?
 
 The idea behind this package is quite simple, for a target buffer, it creates a
