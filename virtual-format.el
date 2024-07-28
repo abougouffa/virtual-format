@@ -127,7 +127,11 @@ formatter."
             end (1+ end)))
     ;; Display the region between `beg' and `end' in the original buffer as the
     ;; spaces/newlines taken from the formatted buffer
-    (add-text-properties beg end `(display ,fmt virtual-format-text t))))
+    (add-text-properties beg end `(display ,fmt virtual-format-block t))))
+
+(defun virtual-format--formatted-buffer-p ()
+  "Check if the current buffer have `virtual-format-block' text properties."
+  (text-property-any (point-min) (point-max) 'virtual-format-block t))
 
 (defun virtual-format--check-state (node node-fmt)
   "Check the state at NODE and NODE-FMT.
@@ -258,11 +262,11 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
   "Cleanup the visual formatting in region (BEG . END)."
   (interactive (virtual-format--get-region-or-whole-buffer))
   (with-silent-modifications
-    (while (and (< beg end) (setq beg (text-property-any beg end 'virtual-format-text t)))
+    (while (and (< beg end) (setq beg (text-property-any beg end 'virtual-format-block t)))
       (remove-text-properties
        beg
-       (setq beg (or (text-property-not-all beg end 'virtual-format-text t) end))
-       '(display nil virtual-format-text nil)))))
+       (setq beg (or (text-property-not-all beg end 'virtual-format-block t) end))
+       '(display nil virtual-format-block nil)))))
 
 ;;;###autoload
 (defun virtual-format-region (beg end)
@@ -275,14 +279,18 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
 (defun virtual-format-buffer ()
   "Visually format the buffer without modifying it."
   (interactive)
-  (virtual-format-region (point-min) (point-max)))
+  (virtual-format-region (point-min) (point-max))
+  (unless (virtual-format--formatted-buffer-p)
+    (message "The buffer seems to be already formatted.")))
 
 ;;;###autoload
 (defun virtual-format-buffer-incrementally ()
   "Incrementally format the buffer without modifying it."
   (interactive)
   (virtual-format-incremental-walk (treesit-buffer-root-node))
-  (message "Incrementally formatting buffer [Done!]"))
+  (message "Incrementally formatting buffer [Done!]")
+  (unless (virtual-format--formatted-buffer-p)
+    (message "The buffer seems to be already formatted.")))
 
 (defun virtual-format-view-quit ()
   "Quit the `virtual-format-view-mode'."
