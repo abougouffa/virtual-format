@@ -56,7 +56,8 @@ incomplete formatting."
     tab-width
     standard-indent
     virtual-format-buffer-formatter-function
-    "-offset$" ; Language specific indentation variables
+    ;; Language specific indentation and coding style local-variables
+    "-offset$"
     "-style$")
   "Inherit these local variables in the temporary buffer used for formatting."
   :type '(repeat (choice symbol regexp))
@@ -168,7 +169,7 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
            (buffer-local-variables))))
     (virtual-format-with-formatted-buffuer
      (delete-region (point-min) (point-max))
-     (delay-mode-hooks (funcall mode))
+     (unless (eq major-mode mode) (delay-mode-hooks (funcall mode)))
      (dolist (var-val local-vars)
        (set (make-local-variable (car var-val)) (cdr var-val)))
      (insert content)
