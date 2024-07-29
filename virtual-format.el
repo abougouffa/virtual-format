@@ -103,13 +103,6 @@ formatter."
   `(with-current-buffer (get-buffer-create (format " *virtual-format:%s*" (buffer-name)))
     ,@body))
 
-(defun virtual-format--get-region-or-whole-buffer ()
-  "Return the region bounds or the buffer bounds."
-  (if (use-region-p)
-      (let ((pos (car (region-bounds))))
-        (list (car pos) (cdr pos)))
-    (list (point-min) (point-max))))
-
 (defun virtual-format--copy-formatting (beg end fmt)
   "Copy formatting to the current buffer at (BEG . END) from FMT."
   (unless (string= (buffer-substring beg end) fmt)
@@ -270,7 +263,10 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
 
 (defun virtual-format-cleanup (beg end)
   "Cleanup the visual formatting in region (BEG . END)."
-  (interactive (virtual-format--get-region-or-whole-buffer))
+  (interactive
+   (if (use-region-p)
+       (list (region-beginning) (region-end))
+     (list (point-min) (point-max))))
   (with-silent-modifications
     (while (and (< beg end) (setq beg (text-property-any beg end 'virtual-format-block t)))
       (remove-text-properties
