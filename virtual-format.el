@@ -58,6 +58,7 @@ incomplete formatting."
     virtual-format-buffer-formatter-function
     ;; Language specific indentation and coding style local-variables
     "-offset$"
+    "-level$"
     "-style$")
   "Inherit these local variables in the temporary buffer used for formatting."
   :type '(repeat (choice symbol regexp))
