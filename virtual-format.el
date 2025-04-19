@@ -6,7 +6,7 @@
 ;; Maintainer: Abdelhak Bougouffa <abougouffa@fedoraproject.org>
 ;; Created: July 23, 2024
 ;; Modified: April 20, 2025
-;; Version: 0.3.1
+;; Version: 0.3.2
 ;; Keywords: convenience faces languages text
 ;; Homepage: https://github.com/abougouffa/virtual-format
 ;; Package-Requires: ((emacs "29.1"))
