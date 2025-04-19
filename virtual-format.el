@@ -5,7 +5,7 @@
 ;; Author: Abdelhak Bougouffa <abougouffa@fedoraproject.org>
 ;; Maintainer: Abdelhak Bougouffa <abougouffa@fedoraproject.org>
 ;; Created: July 23, 2024
-;; Modified: July 28, 2024
+;; Modified: April 20, 2025
 ;; Version: 0.3.1
 ;; Keywords: convenience faces languages text
 ;; Homepage: https://github.com/abougouffa/virtual-format
@@ -99,10 +99,10 @@ formatter."
 
 ;;; Internals
 
-(defmacro virtual-format-with-formatted-buffuer (&rest body)
+(defmacro virtual-format-with-formatted-buffer (&rest body)
   "Run BODY in the formatted buffer."
   `(with-current-buffer (get-buffer-create (format " *virtual-format:%s*" (buffer-name)))
-    ,@body))
+     ,@body))
 
 (defun virtual-format--copy-formatting (beg end fmt)
   "Copy formatting to the current buffer at (BEG . END) from FMT."
@@ -161,7 +161,7 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
                  (cl-some (lambda (regexp) (string-match-p regexp (symbol-name (car local-var))))
                           (seq-filter #'stringp virtual-format-persist-local-variables))))
            (buffer-local-variables))))
-    (virtual-format-with-formatted-buffuer
+    (virtual-format-with-formatted-buffer
      (delete-region (point-min) (point-max))
      (unless (eq major-mode mode) (delay-mode-hooks (funcall mode)))
      (dolist (var-val local-vars)
@@ -193,7 +193,7 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
       (with-silent-modifications
         (virtual-format-depth-first-walk
          node-in-region
-         (virtual-format-with-formatted-buffuer
+         (virtual-format-with-formatted-buffer
           (or (car ; Get the first node of the same type as the unformatted `node-in-region'
                (treesit-filter-child
                 (treesit-buffer-root-node)
@@ -205,13 +205,13 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
 (defun virtual-format-buffer-mode-setup ()
   "Display read-only formatted code of the current buffer."
   (virtual-format--call-formatter (point-min) (point-max))
-  (if (string= (buffer-hash) (virtual-format-with-formatted-buffuer (buffer-hash)))
+  (if (string= (buffer-hash) (virtual-format-with-formatted-buffer (buffer-hash)))
       (progn
         (virtual-format-view-mode -1)
         (message "The buffer seems to be already formatted."))
     (with-silent-modifications
       (delete-region (point-min) (point-max))
-      (insert (virtual-format-with-formatted-buffuer (buffer-string)))
+      (insert (virtual-format-with-formatted-buffer (buffer-string)))
       (font-lock-update)
       (read-only-mode 1))))
 
@@ -232,11 +232,11 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
             (let* ((pos-beg (or (and prev-leaf (treesit-node-end prev-leaf))
                                 (treesit-node-start node)))
                    (pos-end (treesit-node-start n))
-                   (pos-beg-fmt (virtual-format-with-formatted-buffuer
+                   (pos-beg-fmt (virtual-format-with-formatted-buffer
                                  (or (and prev-leaf-fmt (treesit-node-end prev-leaf-fmt))
                                      (treesit-node-start node-fmt))))
-                   (pos-end-fmt (virtual-format-with-formatted-buffuer (treesit-node-start n-fmt)))
-                   (fmt-spaces (virtual-format-with-formatted-buffuer (buffer-substring pos-beg-fmt pos-end-fmt))))
+                   (pos-end-fmt (virtual-format-with-formatted-buffer (treesit-node-start n-fmt)))
+                   (fmt-spaces (virtual-format-with-formatted-buffer (buffer-substring pos-beg-fmt pos-end-fmt))))
               (virtual-format--copy-formatting pos-beg pos-end fmt-spaces)
               (setq prev-leaf n
                     prev-leaf-fmt n-fmt))
