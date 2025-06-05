@@ -184,10 +184,10 @@ When TRANSFER-FORMATTING is non-nil, do transfer the formatting (finely)."
        ;; Check If the buffer has been formatted or not. If not (for example,
        ;; the formatter works asynchronously), we wait for
        ;; `virtual-format-timeout' before returning.
-       (when-let ((timeout (or (numberp virtual-format-timeout)
-                               (and (functionp virtual-format-timeout)
-                                    (funcall virtual-format-timeout))))
-                  ((equal buf-hash (buffer-hash))))
+       (when-let* ((timeout (or (numberp virtual-format-timeout)
+                                (and (functionp virtual-format-timeout)
+                                     (funcall virtual-format-timeout))))
+                   ((equal buf-hash (buffer-hash))))
          (sleep-for timeout))))
     (when transfer-formatting
       (with-silent-modifications
